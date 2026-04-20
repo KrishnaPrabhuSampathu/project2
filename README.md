@@ -1,100 +1,189 @@
-<<<<<<<<<<<<<Prerequisits>>>>>>>>>>>>>>>>>>
---------------------
-Git
-Docker
-AWS CLI
-Terraform Kubectl
---------------------
-|AWS Configure|
 
-Once after clone,
-    npm install
-    npm start
-    node server.js
-    node app.js
-    open http://localhost:3000
-<<<<<<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>>>>>>>
+Pre installation (Local)
+-------------------------------------------------------
+  DockerHub
+  Kubectl
+  NodeJS
+  AWS cli
+    aws eks update-kubeconfig (Connects laptop to EKS)
+---------------------------------------------------------
 
------------------------------------------------------------------
-STEP 1: Dockerizing the app
+Local test
+-------------------------------------------------------
+STEP 1: Build your frontend (chec if required)
+  npm install
+  npm run build
 
-After Dockerfile:
- ##Build image
- docker build -t trend-app .  
+STEP 2: Test Docker image locally
+  docker build -t brain-app .
+  docker run -p 8080:80 brain-app
+  http://localhost:8080
 
- ##Run container  
- docker run -p 3000:3000 trend-app 
+STEP 3: AWS Configure
 
- ##Test
- http://localhost:3000
+STEP 4: Test Kubernetes locally
+  aws eks update-kubeconfig 
+  kubectl get nodes
+  kubectl apply -f kubernetes.yaml
+  kubectl apply -f service.yaml
+  kubectl get pods (should see 2 running pods)
+  kubectl get svc (copy external IP)
+-------------------------------------------------------
 
-------------------------------------------------------------------
- STEP 2: Push Image to DockerHub (Later AWS pull image from DockerHub)
- docker login
- docker tag trend-app your-dockerhub-username/trend-app:v1
- docker push your-dockerhub-username/trend-app:v1
 
-------------------------------------------------------------------
- STEP 3: Create AWS Infrastructure using Terraform
-  mkdir terraform && cd terraform
-   VPC, EC2(Jenkins), IAM roles, EKS
 
------------------------------------------------------------------------
- STEP 4: Configure Kubernetes (EKS)
- Connect to cluster: 
- aws eks update-kubeconfig --name trend-eks --region us-east-1  
- kubectl get nodes
- kubectl apply -f deployment.yaml
- kubectl apply -f service.yaml
- kubectl get svc (shouls ee EXTERNAL-IP → http link) --> open in browser
 
------------------------------------------------------------------------------
- STEP 5: Install Jenkins on EC2
- sudo apt update
- sudo apt install openjdk-17-jdk -y
+STEP 1: Dockerize
+# Build Image:
+docker build -t brain-app .
 
- curl -fsSL https://pkg.jenkins.io/debian-stable/jenkins.io.key | sudo tee \
- /usr/share/keyrings/jenkins-keyring.asc > /dev/null
+# Run Container:
+docker run -p 3000:80 brain-app
 
- echo deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] \
- https://pkg.jenkins.io/debian-stable binary/ | sudo tee \
- /etc/apt/sources.list.d/jenkins.list > /dev/null
+# Access: 
+http://localhost:300    
 
- sudo apt update
- sudo apt install jenkins -y
- sudo systemctl start jenkins
+----------------------------------------------
+STEP 2: DockerHub PUSH
+# Create Docker Hub Account:
 
- Open http://<EC2-IP>:8080
+# Login from Terminal:
+docker login
+  Enter: Username/Password
 
-------------------------------------------------------------------------------
- STEP 6:Jenkins Plugins to Install
+# Tag Image for Docker Hub
+docker tag <local-image> <dockerhub-username>/<repo-name>:tag
+eg: docker tag brain-app john123/brain-app:latest
 
-    Install:
-    Git plugin
-    Docker plugin
-    Pipeline plugin
-    Kubernetes CLI plugin
+# Push to Docker Hub
+docker push john123/brain-app:latest
 
---------------------------------------------------------------------------------
- STEP 7: Create Jenkins CI/CD Pipeline   
+# Accessible
+john123/brain-app:latest
 
--------------------------------------------------------------------------------
- STEP 8: GitHub Webhook (Auto Deploy)
- In GitHub:
-   Repo → Settings → Webhooks:
-      http://<jenkins-ip>:8080/github-webhook/
-      Trigger: Push events
+-----------------------------------------------
+STEP 3: Setup Kubernetes (EKS)
+# create EKS cluster
+eksctl create cluster \
+--name brain-cluster \
+--region us-east-1 \
+--nodegroup-name brain-nodes \
+--node-type t2.micro \
+--nodes 2
 
--------------------------------------------------------------------------------
- STEP 9: Monitoring Setup
- Install monitoring stack on EKS:
+# Connect kubectl to EKS
+aws eks --region us-east-1 update-kubeconfig --name brain-
 
-    Install Prometheus + Grafana
-    kubectl create namespace monitoring
-    helm install prometheus prometheus-community/kube-prometheus-stack -n monitoring     
+# Verify Cluster
+kubectl get nodes
 
-    Access Grafana: kubectl port-forward svc/prometheus-grafana 3000:80 -n monitoring
-                    http://localhost:3000
-    Login: admin / prom-operator
+-----------------------------------------------
+STEP 4: Deploy to EKS
+# Create deployment.yaml and service.yaml
+kubectl apply -f deployment.yaml
+kubectl apply -f service.yaml
+kubectl get svc
+check for EXTERNAL-IP
 
-    Alias: https://your-loadbalancer.amazonaws.com
+-----------------------------------------------
+STEP 5: ENABLE CODEBUILD LOGS (Logs are automatically enabled by default)
+# Create CodeBuild Project  (under source provider, choose GitHub)
+  AWS Console → CodeBuild → Create Project
+
+# Configure Logging
+  Logs Section
+    CloudWatch Logs → Enabled
+    Group name → auto or custom
+    Stream name → auto  
+
+# Enable Privileged Mode
+  Enable: Privileged (without this Docker build will FAIL)    
+
+# Run Build
+  Start Build
+
+# View logs
+  CodeBuild → Your Project → Build → Logs  
+  CloudWatch → Logs → Log groups
+
+# CodeBuild Role
+  AWS Console → CodeBuild → Your Project
+  search Service Role: codebuild-brain-service-role
+
+# Attach permissions
+  IAM → Roles → that role
+    AmazonEKSClusterPolicy
+    AmazonEKSWorkerNodePolicy
+    AmazonEC2ContainerRegistryReadOnly (optional) 
+
+# Add locally
+  kubectl edit configmap aws-auth -n kube-system
+  -----------------------------------------------------------
+  mapRoles:
+  - rolearn: arn:aws:iam::<ACCOUNT_ID>:role/codebuild-role
+    username: codebuild
+    groups:
+      - system:masters
+  ------------------------------------------------------------      
+
+
+# Automating trigger
+Step 1: Create CodePipeline
+    AWS Console → CodePipeline → Create Pipeline (brain-app-pipeline)
+
+Step 2: Source Stage
+    Choose:
+        Source provider: GitHub
+        Connect your repo     
+    Enable: Detect changes (Webhooks)
+
+Step 3: Build Stage
+    Provider: CodeBuild
+    Select your existing CodeBuild project
+    (This will run buildspec.yml)
+
+
+
+
+
+
+
+
+
+---------------------------------------------------------------------------------
+Complete Flow
+
+STEP 1: You push code to GitHub (trigger event)
+STEP 2: CodePipeline detects change (CodePipeline continuously watches your GitHub repo)
+STEP 3: Source stage
+          - CodePipeline pulls your repo
+          - Sends it to build stage
+STEP 4: CodeBuild starts (runs buildspec.yaml)
+          - Installs kubectl
+          - Prepare tool for k8s access
+        <<<<<<<<Pre-build phase>>>>>>>>  
+        Docker login (docker login Docker Hub)
+        Connect to EKS (now CodeBuild can talk to EKS)
+        
+        <<<<<<<Build phase>>>>>>>
+        Docker Build
+          - take Dockerfile
+          - copies dists/
+          - create image using Nginx
+            Output: brain-app image created locally
+        Tag image
+
+        <<<<Post-build phase>>>>
+        - push image
+        - deploy to EKS (now k8s gets updated)
+
+STEP 5: Kubernetes deployment in EKS
+        - Deployment created (now image running inside pod)
+          creates 2 pods (after EKS pulls image from DockerHub)
+        - Service created (loadbalancer)
+          kubectl get service brain-service
+          copy external IP with http tagged
+
+
+
+

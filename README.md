@@ -185,5 +185,5 @@ STEP 5: Kubernetes deployment in EKS
           copy external IP with http tagged
 
 
-
+--------------------------------------------------------------------
 

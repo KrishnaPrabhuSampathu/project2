@@ -183,5 +183,5 @@ STEP 5: Kubernetes deployment in EKS
         - Service created (loadbalancer)
           kubectl get service brain-service
           copy external IP with http tagged
-          
 
+------------

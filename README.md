@@ -184,4 +184,4 @@ STEP 5: Kubernetes deployment in EKS
           kubectl get service brain-service
           copy external IP with http tagged
 
-------------
+

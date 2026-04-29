@@ -30,6 +30,8 @@ phases:
       - docker push $DOCKER_USERNAME/brain-app:latest
 
       - echo Verifying cluster access
+      - aws sts get-caller-identity
+      - kubectl config current-context
       - kubectl get nodes
 
       - echo Validating manifest

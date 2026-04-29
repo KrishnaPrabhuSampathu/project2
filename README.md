@@ -182,6 +182,6 @@ STEP 5: Kubernetes deployment in EKS
           creates 2 pods (after EKS pulls image from DockerHub)
         - Service created (loadbalancer)
           kubectl get service brain-service
-          copy external IP with http tagged
+          
 
 
